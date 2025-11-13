@@ -1,0 +1,6 @@
+streamlit
+supabase-py
+pandas
+openpyxl
+plotly
+python-dotenv
