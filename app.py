@@ -19,15 +19,16 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.set_page_config(
-    page_title="Dashboard Phone Metrics",
+    page_title="TwoMST Dashboard",
     layout="wide"
 )
 
-st.title("📊 Dashboard – Phone Metrics (Supabase Storage)")
+st.title("📊 TwoMST – Dashboard Phone Metrics")
 
 # regex para extrair timestamp e subject do nome do arquivo:
 # ex: 20251021-150659_predict_phone_S000000000000.xlsx
 NAME_RE = re.compile(r"(\d{8})-(\d{6})_.*_(S\d+)\.xlsx")
+
 
 def parse_meta(folder: str, filename: str):
     m = NAME_RE.match(filename)
@@ -42,13 +43,14 @@ def parse_meta(folder: str, filename: str):
         "file_path": f"{BUCKET}/{folder}/{filename}",
     }
 
+
 @st.cache_data(ttl=300)  # 5 minutos
 def load_all_metrics():
     dfs = []
 
     # lista objetos na raiz do bucket (pastas dos usuários)
     root = supabase.storage.from_(BUCKET).list()
-    folders = [item["name"] for item in root if item.get("id") is None]  # heurística "pasta"
+    folders = [item["name"] for item in root if item.get("id") is None]
 
     for folder in folders:
         files = supabase.storage.from_(BUCKET).list(path=folder)
@@ -76,7 +78,6 @@ def load_all_metrics():
 
             row = df.iloc[0].copy()
 
-            # normaliza nomes de colunas se precisar (trocar espaços, etc.)
             row_dict = {
                 "n_cycles": row.get("N#", None),
                 "strategy": row.get("Strategy", None),
@@ -116,14 +117,15 @@ def load_all_metrics():
 
     return df_all
 
+
 df = load_all_metrics()
 
 if df.empty:
     st.warning("Nenhum arquivo .xlsx válido encontrado no bucket 'metrics'.")
     st.stop()
 
-# ========== SIDEBAR – FILTROS ==========
-st.sidebar.header("Filtros")
+# ========== SIDEBAR – FILTROS GERAIS ==========
+st.sidebar.header("Filtros gerais")
 
 if "user_id" in df.columns:
     users = ["(todos)"] + sorted(df["user_id"].dropna().unique().tolist())
@@ -137,8 +139,8 @@ if "strategy" in df.columns:
     if sel_strat != "(todas)":
         df = df[df["strategy"] == sel_strat]
 
-# filtro por data
-if "session_ts" in df.columns:
+# filtro por data (se tiver timestamp)
+if "session_ts" in df.columns and not df["session_ts"].isna().all():
     min_date = df["session_ts"].min().date()
     max_date = df["session_ts"].max().date()
     start, end = st.sidebar.date_input(
@@ -147,16 +149,18 @@ if "session_ts" in df.columns:
         min_value=min_date,
         max_value=max_date
     )
-    if isinstance(start, tuple):  # streamlit bug às vezes
+    # streamlit às vezes devolve tupla dentro de tupla
+    if isinstance(start, tuple):
         start, end = start
+
     mask = (df["session_ts"].dt.date >= start) & (df["session_ts"].dt.date <= end)
     df = df[mask]
 
 st.sidebar.markdown("---")
 st.sidebar.write(f"Registros filtrados: **{len(df)}**")
 
-# ========== RESUMO ==========
-st.subheader("Resumo geral")
+# ========== OVERVIEW GERAL ==========
+st.subheader("Overview geral")
 
 col1, col2, col3, col4 = st.columns(4)
 with col1:
@@ -169,14 +173,16 @@ with col4:
     st.metric("Velocidade média (deg/s)", f"{df['vel_mean'].mean():.1f}")
 
 st.write("### Estatísticas descritivas das métricas principais")
-num_cols = [
-    c for c in df.columns
-    if df[c].dtype.kind in "fi"  # float/int
-]
-st.dataframe(df[num_cols].describe().T)
+num_cols = [c for c in df.columns if df[c].dtype.kind in "fi"]
+if num_cols:
+    st.dataframe(df[num_cols].describe().T)
+else:
+    st.info("Nenhuma coluna numérica encontrada.")
 
-# ========== GRÁFICOS ==========
-st.write("### Distribuição de cadência e velocidade")
+st.markdown("---")
+
+# ========== DISTRIBUIÇÃO GLOBAL ==========
+st.subheader("Distribuição de cadência e velocidade")
 
 c1, c2 = st.columns(2)
 
@@ -191,7 +197,6 @@ with c2:
         st.plotly_chart(fig, use_container_width=True)
 
 st.write("### Relação Cadence x Vel mean")
-
 if {"cadence_cpm", "vel_mean"} <= set(df.columns):
     fig_scatter = px.scatter(
         df,
@@ -203,6 +208,72 @@ if {"cadence_cpm", "vel_mean"} <= set(df.columns):
     )
     st.plotly_chart(fig_scatter, use_container_width=True)
 
-# ========== TABELA ==========
-st.write("### Dados brutos (uma linha por arquivo .xlsx)")
+st.markdown("---")
+
+# ========== ANÁLISE POR SUJEITO ==========
+if "subject_code" in df.columns:
+    st.subheader("Análise por sujeito")
+
+    subj_opts = sorted(df["subject_code"].dropna().unique().tolist())
+    selected_subj = st.selectbox("Selecione o sujeito", subj_opts)
+
+    df_subj = df[df["subject_code"] == selected_subj].sort_values("session_ts")
+
+    if df_subj.empty:
+        st.info("Nenhum dado para esse sujeito com os filtros atuais.")
+    else:
+        df_subj = df_subj.copy()
+        df_subj["session_idx"] = range(1, len(df_subj) + 1)
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Sessões do sujeito", len(df_subj))
+        with c2:
+            st.metric("Repetições (última)", int(df_subj["n_cycles"].iloc[-1]))
+        with c3:
+            st.metric("Cadência (última)", f"{df_subj['cadence_cpm'].iloc[-1]:.1f} c/min")
+
+        x_mode = st.radio(
+            "Eixo X do gráfico de evolução",
+            ["Data da coleta", "Ordem da sessão"],
+            horizontal=True
+        )
+
+        if x_mode == "Data da coleta" and "session_ts" in df_subj.columns:
+            x_col = "session_ts"
+            x_label = "Data da coleta"
+        else:
+            x_col = "session_idx"
+            x_label = "Sessão (#)"
+
+        # gráfico nº repetições
+        fig_rep = px.line(
+            df_subj,
+            x=x_col,
+            y="n_cycles",
+            markers=True,
+            title=f"Evolução do nº de repetições – {selected_subj}",
+        )
+        fig_rep.update_layout(xaxis_title=x_label, yaxis_title="Nº de repetições")
+        st.plotly_chart(fig_rep, use_container_width=True)
+
+        # gráfico cadência + vel_mean
+        if {"cadence_cpm", "vel_mean"} <= set(df_subj.columns):
+            fig_multi = px.line(
+                df_subj,
+                x=x_col,
+                y=["cadence_cpm", "vel_mean"],
+                markers=True,
+                title=f"Cadência e velocidade média – {selected_subj}",
+            )
+            fig_multi.update_layout(xaxis_title=x_label, yaxis_title="Valor")
+            st.plotly_chart(fig_multi, use_container_width=True)
+
+        st.write("Tabela de sessões do sujeito")
+        st.dataframe(df_subj)
+
+st.markdown("---")
+
+# ========== TABELA GERAL ==========
+st.subheader("Dados brutos (todas as sessões filtradas)")
 st.dataframe(df.sort_values("session_ts", ascending=False))
