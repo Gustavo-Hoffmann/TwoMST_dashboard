@@ -16,6 +16,7 @@ BUCKET_RAW = "raw"
 
 PRIMARY_GREEN = "#004d40"  # verde escuro
 BLACK = "#000000"
+LOGO_PATH = "twomst_logo.png"  # coloque o PNG na raiz do repo com esse nome
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     st.error("Defina SUPABASE_URL e SUPABASE_*KEY nas variáveis de ambiente.")
@@ -36,7 +37,8 @@ st.markdown(
     .stApp {{
         background-color: #f5f7fb;
         color: #000000;
-        font-family: "system-ui", sans-serif;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 17px;
     }}
 
     section[data-testid="stSidebar"] {{
@@ -45,64 +47,65 @@ st.markdown(
     }}
     section[data-testid="stSidebar"] * {{
         color: #ffffff !important;
+        font-size: 16px;
     }}
 
-    /* logo / título topo da sidebar */
-    .sidebar-title {{
-        font-size: 1.2rem;
+    .sidebar-title-text {{
+        font-size: 1.4rem;
         font-weight: 700;
-        margin-bottom: 1rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
+        margin-top: 0.2rem;
     }}
-    .sidebar-logo {{
-        width: 26px;
-        height: 26px;
-        border-radius: 8px;
+
+    .sidebar-logo-fallback {{
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
         background: #ffffff;
         display: flex;
         align-items: center;
         justify-content: center;
         color: {PRIMARY_GREEN};
         font-weight: 900;
+        font-size: 1.2rem;
     }}
 
     /* cards bonitos */
     .card {{
         background-color: #ffffff;
-        border-radius: 16px;
-        padding: 1.2rem 1.5rem;
+        border-radius: 18px;
+        padding: 1.4rem 1.7rem;
         box-shadow: 0 2px 6px rgba(0,0,0,0.06);
         border: 1px solid #e0e3eb;
         margin-bottom: 1rem;
     }}
     .card-title {{
-        font-size: 0.9rem;
+        font-size: 1.05rem;
         color: #666a7a;
         margin-bottom: 0.4rem;
         font-weight: 500;
     }}
     .card-value {{
-        font-size: 1.8rem;
+        font-size: 2.1rem;
         font-weight: 700;
         color: {PRIMARY_GREEN};
     }}
 
-    /* tabelas arredondadas */
     .stDataFrame, .stDataEditor {{
         border-radius: 12px !important;
         overflow: hidden;
         box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        font-size: 15px;
     }}
 
+    h2, h3, h4 {{
+        font-weight: 700;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.title("👣 TwoMST.app")
-
+st.title("👣 TwoMST.app 👣")
 
 # regex para METRICS: 20251021-150659_predict_phone_S000000000000.xlsx
 METRICS_RE = re.compile(r"(\d{8})-(\d{6})_.*_(S\d+)\.xlsx", re.IGNORECASE)
@@ -302,15 +305,14 @@ raw_index = index_raw_files()
 # ================= SIDEBAR / MENU =================
 
 with st.sidebar:
-    st.markdown(
-        """
-        <div class="sidebar-title">
-          <div class="sidebar-logo">T</div>
-          <span>TwoMST.app</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    col_logo, col_txt = st.columns([1, 3])
+    with col_logo:
+        if os.path.exists(LOGO_PATH):
+            st.image(LOGO_PATH, width=40)
+        else:
+            st.markdown('<div class="sidebar-logo-fallback">T</div>', unsafe_allow_html=True)
+    with col_txt:
+        st.markdown('<div class="sidebar-title-text">TwoMST.app</div>', unsafe_allow_html=True)
 
     menu = st.radio(
         "Menu",
@@ -351,7 +353,6 @@ if menu == "Home":
             unsafe_allow_html=True,
         )
 
-    # Pequeno gráfico de testes por dia só pra dar cara de painel
     if "session_ts" in df.columns:
         st.subheader("Testes por dia")
         df_daily = (
@@ -368,7 +369,12 @@ if menu == "Home":
             color_discrete_sequence=[PRIMARY_GREEN],
         )
         fig_day.update_traces(marker_line_width=0, marker_line_color="#ffffff")
-        fig_day.update_layout(xaxis_title="Data", yaxis_title="N testes")
+        fig_day.update_layout(
+            xaxis_title="Data",
+            yaxis_title="N testes",
+            plot_bgcolor="#ffffff",
+            font=dict(size=16),
+        )
         st.plotly_chart(fig_day, width="stretch")
 
 # ================= PACIENTES =================
@@ -416,7 +422,6 @@ if menu == "Pacientes":
     df_subj = df_subj.copy()
     df_subj["session_idx"] = range(1, len(df_subj) + 1)
 
-    # indica se tem bruto associado
     df_subj["has_raw"] = df_subj.apply(
         lambda r: (str(r["user_id"]), str(r["session_key"])) in raw_index,
         axis=1,
@@ -479,11 +484,12 @@ if menu == "Pacientes":
         title=None,
         color_discrete_sequence=[PRIMARY_GREEN],
     )
-    fig_rep.update_traces(line=dict(width=4), marker=dict(size=9))
+    fig_rep.update_traces(line=dict(width=6), marker=dict(size=10))
     fig_rep.update_layout(
         xaxis_title=x_label,
         yaxis_title="Nº de repetições",
         plot_bgcolor="#ffffff",
+        font=dict(size=16),
     )
     st.plotly_chart(fig_rep, width="stretch")
 
@@ -519,6 +525,7 @@ if menu == "Pacientes":
                     yaxis_title=None,
                     plot_bgcolor="#ffffff",
                     margin=dict(l=10, r=10, t=40, b=20),
+                    font=dict(size=15),
                 )
                 st.plotly_chart(fig_bar, width="stretch")
 
@@ -603,10 +610,11 @@ if menu == "Pacientes":
             title=None,
             color_discrete_sequence=[PRIMARY_GREEN],
         )
-        fig_raw.update_traces(line=dict(width=2))
+        fig_raw.update_traces(line=dict(width=4))
         fig_raw.update_layout(
             xaxis_title="Tempo (s)",
             yaxis_title="gyro X (rad/s)",
             plot_bgcolor="#ffffff",
+            font=dict(size=16),
         )
         st.plotly_chart(fig_raw, width="stretch")
