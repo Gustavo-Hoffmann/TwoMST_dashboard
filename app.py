@@ -47,13 +47,13 @@ st.markdown(
     }}
     section[data-testid="stSidebar"] * {{
         color: #ffffff !important;
-        font-size: 16px;
+        font-size: 17px;
     }}
 
     .sidebar-title-text {{
-        font-size: 1.4rem;
-        font-weight: 700;
-        margin-top: 0.2rem;
+        font-size: 2.0rem;
+        font-weight: 800;
+        margin-top: 0.1rem;
     }}
 
     .sidebar-logo-fallback {{
@@ -79,22 +79,33 @@ st.markdown(
         margin-bottom: 1rem;
     }}
     .card-title {{
-        font-size: 1.05rem;
+        font-size: 1.1rem;
         color: #666a7a;
         margin-bottom: 0.4rem;
         font-weight: 500;
     }}
     .card-value {{
-        font-size: 2.1rem;
+        font-size: 2.3rem;
         font-weight: 700;
         color: {PRIMARY_GREEN};
     }}
 
-    .stDataFrame, .stDataEditor {{
+    /* tabelas arredondadas + fonte maior + linhas mais grossas */
+    div[data-testid="stDataFrame"] {{
         border-radius: 12px !important;
         overflow: hidden;
         box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-        font-size: 15px;
+    }}
+    div[data-testid="stDataFrame"] table {{
+        font-size: 16px;
+        border-collapse: separate;
+        border-spacing: 0;
+    }}
+    div[data-testid="stDataFrame"] table thead tr th,
+    div[data-testid="stDataFrame"] table tbody tr td {{
+        padding-top: 0.55rem;
+        padding-bottom: 0.55rem;
+        border-bottom: 2px solid #e0e3eb;
     }}
 
     h2, h3, h4 {{
@@ -105,7 +116,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("👣 TwoMST.app 👣")
+st.title("📊 TwoMST.app – Dashboard")
 
 # regex para METRICS: 20251021-150659_predict_phone_S000000000000.xlsx
 METRICS_RE = re.compile(r"(\d{8})-(\d{6})_.*_(S\d+)\.xlsx", re.IGNORECASE)
@@ -373,7 +384,7 @@ if menu == "Home":
             xaxis_title="Data",
             yaxis_title="N testes",
             plot_bgcolor="#ffffff",
-            font=dict(size=16),
+            font=dict(size=17),
         )
         st.plotly_chart(fig_day, width="stretch")
 
@@ -395,13 +406,11 @@ if menu == "Pacientes":
     )
 
     st.markdown("#### Lista de pacientes")
-    st.dataframe(
-        df_pat.assign(
-            first_test=df_pat["first_test"].dt.strftime("%Y-%m-%d %H:%M"),
-            last_test=df_pat["last_test"].dt.strftime("%Y-%m-%d %H:%M"),
-        ),
-        use_container_width=True,
-    )
+    df_pat_view = df_pat.assign(
+        first_test=df_pat["first_test"].dt.strftime("%Y-%m-%d %H:%M"),
+        last_test=df_pat["last_test"].dt.strftime("%Y-%m-%d %H:%M"),
+    ).reset_index(drop=True)
+    st.dataframe(df_pat_view, use_container_width=True)
 
     # ---- Seleção de paciente ----
     subj_opts = df_pat["subject_code"].tolist()
@@ -489,7 +498,7 @@ if menu == "Pacientes":
         xaxis_title=x_label,
         yaxis_title="Nº de repetições",
         plot_bgcolor="#ffffff",
-        font=dict(size=16),
+        font=dict(size=17),
     )
     st.plotly_chart(fig_rep, width="stretch")
 
@@ -525,7 +534,7 @@ if menu == "Pacientes":
                     yaxis_title=None,
                     plot_bgcolor="#ffffff",
                     margin=dict(l=10, r=10, t=40, b=20),
-                    font=dict(size=15),
+                    font=dict(size=16),
                 )
                 st.plotly_chart(fig_bar, width="stretch")
 
@@ -546,6 +555,7 @@ if menu == "Pacientes":
     df_sessions_view["session_ts"] = df_sessions_view["session_ts"].dt.strftime(
         "%Y-%m-%d %H:%M"
     )
+    df_sessions_view = df_sessions_view.reset_index(drop=True)
     st.dataframe(df_sessions_view, use_container_width=True)
 
     # ---- Selecionar um teste específico ----
@@ -589,6 +599,7 @@ if menu == "Pacientes":
 
     df_one = row_sel[metrics_cols].to_frame().T
     df_one.index = [row_sel["session_ts"].strftime("%Y-%m-%d %H:%M")]
+    df_one = df_one.reset_index(drop=True)
     st.dataframe(df_one, use_container_width=True)
 
     # ---- Série temporal do gyro X ----
@@ -615,6 +626,6 @@ if menu == "Pacientes":
             xaxis_title="Tempo (s)",
             yaxis_title="gyro X (rad/s)",
             plot_bgcolor="#ffffff",
-            font=dict(size=16),
+            font=dict(size=17),
         )
         st.plotly_chart(fig_raw, width="stretch")
