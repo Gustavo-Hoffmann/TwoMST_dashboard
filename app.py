@@ -6,7 +6,7 @@ import streamlit as st
 import plotly.express as px
 from supabase import create_client, Client
 
-# ========== CONFIG GERAL ==========
+# ================= CONFIG GERAL =================
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
@@ -28,27 +28,81 @@ st.set_page_config(
     layout="wide"
 )
 
-# ====== MINI TEMA (verde, branco, preto) ======
+# ================= TEMA / CSS =================
+
 st.markdown(
-    """
+    f"""
     <style>
-    .stApp {
-        background-color: #ffffff;
+    .stApp {{
+        background-color: #f5f7fb;
         color: #000000;
-    }
-    .block-container {
+        font-family: "system-ui", sans-serif;
+    }}
+
+    section[data-testid="stSidebar"] {{
+        background-color: {PRIMARY_GREEN};
         padding-top: 1rem;
-        padding-bottom: 2rem;
-    }
-    .stMetric label, .stMetric span {
-        color: #004d40 !important;
-    }
+    }}
+    section[data-testid="stSidebar"] * {{
+        color: #ffffff !important;
+    }}
+
+    /* logo / título topo da sidebar */
+    .sidebar-title {{
+        font-size: 1.2rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }}
+    .sidebar-logo {{
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        background: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: {PRIMARY_GREEN};
+        font-weight: 900;
+    }}
+
+    /* cards bonitos */
+    .card {{
+        background-color: #ffffff;
+        border-radius: 16px;
+        padding: 1.2rem 1.5rem;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        border: 1px solid #e0e3eb;
+        margin-bottom: 1rem;
+    }}
+    .card-title {{
+        font-size: 0.9rem;
+        color: #666a7a;
+        margin-bottom: 0.4rem;
+        font-weight: 500;
+    }}
+    .card-value {{
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: {PRIMARY_GREEN};
+    }}
+
+    /* tabelas arredondadas */
+    .stDataFrame, .stDataEditor {{
+        border-radius: 12px !important;
+        overflow: hidden;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    }}
+
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.title("📊 TwoMST – Dashboard Phone Metrics")
+st.title("👣 TwoMST.app")
+
 
 # regex para METRICS: 20251021-150659_predict_phone_S000000000000.xlsx
 METRICS_RE = re.compile(r"(\d{8})-(\d{6})_.*_(S\d+)\.xlsx", re.IGNORECASE)
@@ -212,8 +266,7 @@ def load_raw_series(user_id: str, session_key: str, raw_index: dict):
     if df_raw.empty:
         return None
 
-    # Colunas esperadas:
-    # gyroTimestamp_sinceReboot(s), gyroRotationX(rad/s), ...
+    # tempo
     time_col = None
     for c in df_raw.columns:
         if "timestamp" in c.lower() or "time" in c.lower():
@@ -236,240 +289,324 @@ def load_raw_series(user_id: str, session_key: str, raw_index: dict):
     return pd.DataFrame({"t_s": t, "gyro_x": g})
 
 
-# ========== CARREGA MÉTRICAS ==========
+# ================= CARREGAR DADOS =================
+
 df = load_all_metrics()
 
 if df.empty:
     st.warning("Nenhum arquivo .xlsx válido encontrado no bucket 'metrics'.")
     st.stop()
 
-# ========== SIDEBAR – FILTROS GERAIS ==========
-st.sidebar.header("Filtros")
+raw_index = index_raw_files()
 
-if "strategy" in df.columns:
-    strategies = ["(todas)"] + sorted(df["strategy"].dropna().unique().tolist())
-    sel_strat = st.sidebar.selectbox("Strategy", strategies)
-    if sel_strat != "(todas)":
-        df = df[df["strategy"] == sel_strat]
+# ================= SIDEBAR / MENU =================
 
-# filtro por data
-if "session_ts" in df.columns and not df["session_ts"].isna().all():
-    min_date = df["session_ts"].min().date()
-    max_date = df["session_ts"].max().date()
-    start, end = st.sidebar.date_input(
-        "Período",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
+with st.sidebar:
+    st.markdown(
+        """
+        <div class="sidebar-title">
+          <div class="sidebar-logo">T</div>
+          <span>TwoMST.app</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    if isinstance(start, tuple):
-        start, end = start
-    mask = (df["session_ts"].dt.date >= start) & (df["session_ts"].dt.date <= end)
-    df = df[mask]
 
-st.sidebar.markdown("---")
-st.sidebar.write(f"Sessões filtradas: **{len(df)}**")
+    menu = st.radio(
+        "Menu",
+        ["Home", "Pacientes"],
+        index=0,
+        label_visibility="collapsed",
+    )
 
-# ========== TABS ==========
-tab_overview, tab_subject = st.tabs(["Visão geral", "Análise por sujeito"])
+    st.markdown("---")
+    st.caption(f"Sessões carregadas: {len(df)}")
 
-# --------------------------------------------------
-# TAB 1 — VISÃO GERAL
-# --------------------------------------------------
-with tab_overview:
-    st.subheader("Overview geral")
 
-    col1, col2, col3, col4 = st.columns(4)
+# ================= HOME =================
+
+if menu == "Home":
+    total_tests = len(df)
+    total_subjects = df["subject_code"].nunique() if "subject_code" in df.columns else 0
+
+    col1, col2 = st.columns(2)
     with col1:
-        st.metric("N sessões", len(df))
-    with col2:
-        st.metric(
-            "N sujeitos únicos",
-            df["subject_code"].nunique() if "subject_code" in df.columns else 0,
+        st.markdown(
+            f"""
+            <div class="card">
+              <div class="card-title">Testes realizados</div>
+              <div class="card-value">{total_tests}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-    with col3:
-        st.metric("Cadência média (c/min)", f"{df['cadence_cpm'].mean():.1f}")
-    with col4:
-        st.metric("Velocidade média (deg/s)", f"{df['vel_mean'].mean():.1f}")
+    with col2:
+        st.markdown(
+            f"""
+            <div class="card">
+              <div class="card-title">Sujeitos únicos</div>
+              <div class="card-value">{total_subjects}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    st.markdown("### Distribuição das métricas principais")
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-        if "cadence_cpm" in df.columns:
-            fig = px.histogram(
-                df,
-                x="cadence_cpm",
-                nbins=20,
-                title="Cadence (cycles/min)",
-                color_discrete_sequence=[PRIMARY_GREEN],
-            )
-            st.plotly_chart(fig, width="stretch")
-
-    with c2:
-        if "vel_mean" in df.columns:
-            fig = px.histogram(
-                df,
-                x="vel_mean",
-                nbins=20,
-                title="Vel mean (deg/s)",
-                color_discrete_sequence=[PRIMARY_GREEN],
-            )
-            st.plotly_chart(fig, width="stretch")
-
-    st.markdown("### Relação Cadence × Vel mean")
-    if {"cadence_cpm", "vel_mean"} <= set(df.columns):
-        fig_scatter = px.scatter(
-            df,
-            x="cadence_cpm",
-            y="vel_mean",
-            color="strategy" if "strategy" in df.columns else None,
-            hover_data=["subject_code", "session_ts"],
-            title="Vel mean vs Cadence",
+    # Pequeno gráfico de testes por dia só pra dar cara de painel
+    if "session_ts" in df.columns:
+        st.subheader("Testes por dia")
+        df_daily = (
+            df.assign(date=df["session_ts"].dt.date)
+            .groupby("date")
+            .size()
+            .reset_index(name="n_tests")
+        )
+        fig_day = px.bar(
+            df_daily,
+            x="date",
+            y="n_tests",
+            title="Número de testes por dia",
             color_discrete_sequence=[PRIMARY_GREEN],
         )
-        st.plotly_chart(fig_scatter, width="stretch")
+        fig_day.update_traces(marker_line_width=0, marker_line_color="#ffffff")
+        fig_day.update_layout(xaxis_title="Data", yaxis_title="N testes")
+        st.plotly_chart(fig_day, width="stretch")
 
-# --------------------------------------------------
-# TAB 2 — ANÁLISE POR SUJEITO
-# --------------------------------------------------
-with tab_subject:
-    st.subheader("Análise por sujeito")
+# ================= PACIENTES =================
 
-    if "subject_code" not in df.columns:
-        st.info("Não há coluna 'subject_code' nas métricas.")
+if menu == "Pacientes":
+    st.subheader("Pacientes")
+
+    # ---- Lista de pacientes ----
+    df_pat = (
+        df.groupby("subject_code")
+        .agg(
+            n_tests=("session_key", "nunique"),
+            first_test=("session_ts", "min"),
+            last_test=("session_ts", "max"),
+        )
+        .reset_index()
+        .sort_values("subject_code")
+    )
+
+    st.markdown("#### Lista de pacientes")
+    st.dataframe(
+        df_pat.assign(
+            first_test=df_pat["first_test"].dt.strftime("%Y-%m-%d %H:%M"),
+            last_test=df_pat["last_test"].dt.strftime("%Y-%m-%d %H:%M"),
+        ),
+        use_container_width=True,
+    )
+
+    # ---- Seleção de paciente ----
+    subj_opts = df_pat["subject_code"].tolist()
+    if not subj_opts:
+        st.info("Nenhum paciente disponível.")
+        st.stop()
+
+    selected_subj = st.selectbox("Selecionar paciente", subj_opts)
+
+    df_subj = df[df["subject_code"] == selected_subj].sort_values("session_ts")
+
+    if df_subj.empty:
+        st.info("Nenhum dado para esse paciente.")
+        st.stop()
+
+    st.markdown(f"### Paciente: `{selected_subj}`")
+
+    df_subj = df_subj.copy()
+    df_subj["session_idx"] = range(1, len(df_subj) + 1)
+
+    # indica se tem bruto associado
+    df_subj["has_raw"] = df_subj.apply(
+        lambda r: (str(r["user_id"]), str(r["session_key"])) in raw_index,
+        axis=1,
+    )
+
+    # ---- Métricas rápidas ----
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(
+            f"""
+            <div class="card">
+              <div class="card-title">Sessões do sujeito</div>
+              <div class="card-value">{len(df_subj)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f"""
+            <div class="card">
+              <div class="card-title">Repetições (última sessão)</div>
+              <div class="card-value">{int(df_subj['n_cycles'].iloc[-1])}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            f"""
+            <div class="card">
+              <div class="card-title">Cadência (última sessão, c/min)</div>
+              <div class="card-value">{df_subj['cadence_cpm'].iloc[-1]:.1f}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # ---- Evolução do nº de repetições ----
+    st.markdown("#### Evolução do número de repetições")
+
+    x_mode = st.radio(
+        "Eixo X",
+        ["Data da sessão", "Número da sessão"],
+        horizontal=True,
+    )
+
+    if x_mode == "Data da sessão":
+        x_col = "session_ts"
+        x_label = "Data"
     else:
-        subj_opts = sorted(df["subject_code"].dropna().unique().tolist())
-        if not subj_opts:
-            st.info("Nenhum sujeito disponível com os filtros atuais.")
-        else:
-            selected_subj = st.selectbox("Selecione o sujeito", subj_opts)
+        x_col = "session_idx"
+        x_label = "Sessão (#)"
 
-            df_subj = df[df["subject_code"] == selected_subj].sort_values("session_ts")
+    fig_rep = px.line(
+        df_subj,
+        x=x_col,
+        y="n_cycles",
+        markers=True,
+        title=None,
+        color_discrete_sequence=[PRIMARY_GREEN],
+    )
+    fig_rep.update_traces(line=dict(width=4), marker=dict(size=9))
+    fig_rep.update_layout(
+        xaxis_title=x_label,
+        yaxis_title="Nº de repetições",
+        plot_bgcolor="#ffffff",
+    )
+    st.plotly_chart(fig_rep, width="stretch")
 
-            if df_subj.empty:
-                st.info("Nenhum dado para esse sujeito com os filtros atuais.")
-            else:
-                df_subj = df_subj.copy()
-                df_subj["session_idx"] = range(1, len(df_subj) + 1)
+    # ---- Gráficos de barras das métricas ----
+    st.markdown("#### Comparação de métricas entre sessões")
 
-                # índice de arquivos brutos
-                raw_index = index_raw_files()
-                df_subj["has_raw"] = df_subj.apply(
-                    lambda r: (str(r["user_id"]), str(r["session_key"])) in raw_index,
-                    axis=1,
-                )
+    metrics_to_plot = [
+        ("cadence_cpm", "Cadência (c/min)"),
+        ("vel_mean", "Velocidade média (deg/s)"),
+        ("time_mean", "Tempo médio (s)"),
+        ("cv_time", "CV Tempo"),
+        ("cv_vel", "CV Vel"),
+        ("vel_sd", "SD Vel"),
+        ("vel_max", "Vel máx (deg/s)"),
+        ("vel_min", "Vel mín (deg/s)"),
+    ]
+    metrics_to_plot = [m for m in metrics_to_plot if m[0] in df_subj.columns]
 
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    st.metric("Sessões do sujeito", len(df_subj))
-                with c2:
-                    st.metric("Repetições (última)", int(df_subj["n_cycles"].iloc[-1]))
-                with c3:
-                    st.metric(
-                        "Cadência (última)",
-                        f"{df_subj['cadence_cpm'].iloc[-1]:.1f} c/min",
-                    )
-
-                # eixo X dos gráficos (data ou ordem)
-                x_mode = st.radio(
-                    "Eixo X do gráfico de evolução",
-                    ["Data da coleta", "Ordem da sessão"],
-                    horizontal=True,
-                )
-
-                if x_mode == "Data da coleta" and "session_ts" in df_subj.columns:
-                    x_col = "session_ts"
-                    x_label = "Data da coleta"
-                else:
-                    x_col = "session_idx"
-                    x_label = "Sessão (#)"
-
-                # ---- Evolução do nº de repetições ----
-                fig_rep = px.line(
+    for i in range(0, len(metrics_to_plot), 4):
+        cols = st.columns(4)
+        for j, (col_name, label) in enumerate(metrics_to_plot[i : i + 4]):
+            with cols[j]:
+                fig_bar = px.bar(
                     df_subj,
-                    x=x_col,
-                    y="n_cycles",
-                    markers=True,
-                    title=f"Evolução do nº de repetições – {selected_subj}",
+                    x="session_idx",
+                    y=col_name,
+                    title=label,
                     color_discrete_sequence=[PRIMARY_GREEN],
                 )
-                fig_rep.update_layout(
-                    xaxis_title=x_label, yaxis_title="Nº de repetições"
+                fig_bar.update_traces(marker_line_width=0, marker_line_color="#ffffff")
+                fig_bar.update_layout(
+                    xaxis_title="Sessão",
+                    yaxis_title=None,
+                    plot_bgcolor="#ffffff",
+                    margin=dict(l=10, r=10, t=40, b=20),
                 )
-                st.plotly_chart(fig_rep, width="stretch")
+                st.plotly_chart(fig_bar, width="stretch")
 
-                # ---- Cadência + vel_mean ----
-                if {"cadence_cpm", "vel_mean"} <= set(df_subj.columns):
-                    fig_multi = px.line(
-                        df_subj,
-                        x=x_col,
-                        y=["cadence_cpm", "vel_mean"],
-                        markers=True,
-                        title=f"Cadência e velocidade média – {selected_subj}",
-                        color_discrete_map={
-                            "cadence_cpm": PRIMARY_GREEN,
-                            "vel_mean": BLACK,
-                        },
-                    )
-                    fig_multi.update_layout(xaxis_title=x_label, yaxis_title="Valor")
-                    st.plotly_chart(fig_multi, width="stretch")
+    # ---- Lista de testes do sujeito ----
+    st.markdown("#### Testes desse paciente")
 
-                st.markdown("### Série temporal do gyro X (dados brutos)")
+    df_sessions_view = df_subj[
+        [
+            "session_idx",
+            "session_ts",
+            "n_cycles",
+            "cadence_cpm",
+            "vel_mean",
+            "time_mean",
+            "has_raw",
+        ]
+    ].copy()
+    df_sessions_view["session_ts"] = df_sessions_view["session_ts"].dt.strftime(
+        "%Y-%m-%d %H:%M"
+    )
+    st.dataframe(df_sessions_view, use_container_width=True)
 
-                # selectbox de sessão (para escolher qual série temporal ver)
-                def _format_session(i: int) -> str:
-                    r = df_subj.iloc[i]
-                    base = f"Sessão {int(r['session_idx'])} – {r['session_ts'].strftime('%Y-%m-%d %H:%M')}"
-                    if r["has_raw"]:
-                        return base + " ✅ bruto"
-                    return base + " ⚠️ sem bruto"
-                options_idx = list(range(len(df_subj)))
-                default_idx = len(df_subj) - 1  # última sessão
-                sel_pos = st.selectbox(
-                    "Sessão para visualizar o gyro X",
-                    options_idx,
-                    index=default_idx,
-                    format_func=_format_session,
-                )
-                row_sel = df_subj.iloc[sel_pos]
+    # ---- Selecionar um teste específico ----
+    st.markdown("### Detalhes de um teste específico")
 
-                if not row_sel["has_raw"]:
-                    st.info("Essa sessão não tem arquivo bruto correspondente no bucket 'raw'.")
-                else:
-                    df_raw_series = load_raw_series(
-                        user_id=row_sel["user_id"],
-                        session_key=row_sel["session_key"],
-                        raw_index=raw_index,
-                    )
-                    if df_raw_series is None or df_raw_series.empty:
-                        st.warning("Não foi possível ler a série temporal do gyro X.")
-                    else:
-                        fig_raw = px.line(
-                            df_raw_series,
-                            x="t_s",
-                            y="gyro_x",
-                            title=f"Gyro X – sessão {int(row_sel['session_idx'])}",
-                            color_discrete_sequence=[PRIMARY_GREEN],
-                        )
-                        fig_raw.update_layout(
-                            xaxis_title="Tempo (s)",
-                            yaxis_title="gyro X (rad/s)",
-                        )
-                        st.plotly_chart(fig_raw, width="stretch")
+    def _format_session(row):
+        return f"Sessão {int(row['session_idx'])} – {row['session_ts'].strftime('%Y-%m-%d %H:%M')}"
 
-                st.markdown("### Sessões desse sujeito")
-                st.dataframe(
-                    df_subj[
-                        [
-                            "session_ts",
-                            "session_idx",
-                            "n_cycles",
-                            "cadence_cpm",
-                            "vel_mean",
-                            "time_mean",
-                            "has_raw",
-                        ]
-                    ].sort_values("session_ts", ascending=False)
-                )
+    options_idx = list(range(len(df_subj)))
+    default_idx = len(df_subj) - 1
+    sel_pos = st.selectbox(
+        "Escolha a sessão",
+        options_idx,
+        index=default_idx,
+        format_func=lambda i: _format_session(df_subj.iloc[i]),
+    )
+    row_sel = df_subj.iloc[sel_pos]
+
+    # ---- Tabela com todas as métricas dessa sessão ----
+    st.markdown("#### Métricas da sessão selecionada")
+
+    metrics_cols = [
+        "n_cycles",
+        "strategy",
+        "cadence_cpm",
+        "vel_ini",
+        "vel_end",
+        "slope_deg_s2",
+        "vel_mean",
+        "vel_sd",
+        "cv_vel",
+        "vel_max",
+        "vel_min",
+        "time_mean",
+        "time_sd",
+        "cv_time",
+        "time_max",
+        "time_min",
+    ]
+    metrics_cols = [c for c in metrics_cols if c in df_subj.columns]
+
+    df_one = row_sel[metrics_cols].to_frame().T
+    df_one.index = [row_sel["session_ts"].strftime("%Y-%m-%d %H:%M")]
+    st.dataframe(df_one, use_container_width=True)
+
+    # ---- Série temporal do gyro X ----
+    st.markdown("#### Série temporal – gyroRotationX(rad/s)")
+
+    df_raw_series = load_raw_series(
+        user_id=row_sel["user_id"],
+        session_key=row_sel["session_key"],
+        raw_index=raw_index,
+    )
+
+    if df_raw_series is None or df_raw_series.empty:
+        st.info("Não foi possível encontrar ou ler o arquivo bruto para essa sessão.")
+    else:
+        fig_raw = px.line(
+            df_raw_series,
+            x="t_s",
+            y="gyro_x",
+            title=None,
+            color_discrete_sequence=[PRIMARY_GREEN],
+        )
+        fig_raw.update_traces(line=dict(width=2))
+        fig_raw.update_layout(
+            xaxis_title="Tempo (s)",
+            yaxis_title="gyro X (rad/s)",
+            plot_bgcolor="#ffffff",
+        )
+        st.plotly_chart(fig_raw, width="stretch")
