@@ -41,32 +41,34 @@ st.markdown(
         font-size: 17px;
     }}
 
+    /* SIDEBAR */
     section[data-testid="stSidebar"] {{
         background-color: {PRIMARY_GREEN};
         padding-top: 1rem;
     }}
     section[data-testid="stSidebar"] * {{
         color: #ffffff !important;
-        font-size: 17px;
+        font-size: 18px !important;
     }}
 
     .sidebar-title-text {{
-        font-size: 2.0rem;
+        font-size: 2.4rem !important;
         font-weight: 800;
         margin-top: 0.1rem;
+        line-height: 1.1;
     }}
 
     .sidebar-logo-fallback {{
-        width: 40px;
-        height: 40px;
-        border-radius: 10px;
+        width: 50px;
+        height: 50px;
+        border-radius: 12px;
         background: #ffffff;
         display: flex;
         align-items: center;
         justify-content: center;
         color: {PRIMARY_GREEN};
         font-weight: 900;
-        font-size: 1.2rem;
+        font-size: 1.4rem;
     }}
 
     /* cards bonitos */
@@ -90,22 +92,22 @@ st.markdown(
         color: {PRIMARY_GREEN};
     }}
 
-    /* tabelas arredondadas + fonte maior + linhas mais grossas */
+    /* DataFrames: borda arredondada, fonte maior e linhas mais altas */
     div[data-testid="stDataFrame"] {{
         border-radius: 12px !important;
         overflow: hidden;
         box-shadow: 0 2px 6px rgba(0,0,0,0.04);
     }}
     div[data-testid="stDataFrame"] table {{
-        font-size: 16px;
+        font-size: 17px !important;
         border-collapse: separate;
         border-spacing: 0;
     }}
     div[data-testid="stDataFrame"] table thead tr th,
     div[data-testid="stDataFrame"] table tbody tr td {{
-        padding-top: 0.55rem;
-        padding-bottom: 0.55rem;
-        border-bottom: 2px solid #e0e3eb;
+        padding-top: 0.65rem !important;
+        padding-bottom: 0.65rem !important;
+        border-bottom: 2px solid #e0e3eb !important;
     }}
 
     h2, h3, h4 {{
@@ -116,7 +118,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("📊 TwoMST.app – Dashboard")
+st.title("👣 TwoMST.app 👣")
 
 # regex para METRICS: 20251021-150659_predict_phone_S000000000000.xlsx
 METRICS_RE = re.compile(r"(\d{8})-(\d{6})_.*_(S\d+)\.xlsx", re.IGNORECASE)
@@ -319,7 +321,7 @@ with st.sidebar:
     col_logo, col_txt = st.columns([1, 3])
     with col_logo:
         if os.path.exists(LOGO_PATH):
-            st.image(LOGO_PATH, width=40)
+            st.image(LOGO_PATH, width=55)
         else:
             st.markdown('<div class="sidebar-logo-fallback">T</div>', unsafe_allow_html=True)
     with col_txt:
@@ -410,7 +412,7 @@ if menu == "Pacientes":
         first_test=df_pat["first_test"].dt.strftime("%Y-%m-%d %H:%M"),
         last_test=df_pat["last_test"].dt.strftime("%Y-%m-%d %H:%M"),
     ).reset_index(drop=True)
-    st.dataframe(df_pat_view, use_container_width=True)
+    st.dataframe(df_pat_view, use_container_width=True, hide_index=True)
 
     # ---- Seleção de paciente ----
     subj_opts = df_pat["subject_code"].tolist()
@@ -556,7 +558,7 @@ if menu == "Pacientes":
         "%Y-%m-%d %H:%M"
     )
     df_sessions_view = df_sessions_view.reset_index(drop=True)
-    st.dataframe(df_sessions_view, use_container_width=True)
+    st.dataframe(df_sessions_view, use_container_width=True, hide_index=True)
 
     # ---- Selecionar um teste específico ----
     st.markdown("### Detalhes de um teste específico")
@@ -600,7 +602,7 @@ if menu == "Pacientes":
     df_one = row_sel[metrics_cols].to_frame().T
     df_one.index = [row_sel["session_ts"].strftime("%Y-%m-%d %H:%M")]
     df_one = df_one.reset_index(drop=True)
-    st.dataframe(df_one, use_container_width=True)
+    st.dataframe(df_one, use_container_width=True, hide_index=True)
 
     # ---- Série temporal do gyro X ----
     st.markdown("#### Série temporal – gyroRotationX(rad/s)")
